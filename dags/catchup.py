@@ -9,7 +9,7 @@ with DAG(
     #schedule=timedelta(days=1),
     #schedule="0 * * * *",
     schedule="@hourly",
-    start_date=pendulum.datetime(2025, 3, 10, tz="Asia/Seoul"),
+    start_date=pendulum.datetime(2025, 3, 11, tz="Asia/Seoul"),
     catchup=False
 ) as dag:
     

@@ -2,51 +2,101 @@ from datetime import datetime, timedelta
 from airflow.models.dag import DAG
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
+import requests
+import os
 import pendulum
 
+def generate_bash_commands(columns: list):
+    cmds = []
+    max_length = max(len(c) for c in columns)
+    for c in columns:
+        # 가변적인 공백 추가 (최대 길이에 맞춰 정렬)
+        padding = " " * (max_length - len(c))
+        cmds.append(f'echo "{c}{padding} : ====> {{{{ {c} }}}}"')
+    return "\n".join(cmds)
+
+def send_noti(msg):
+    WEBHOOK_ID=os.getenv('DISCORD_WEBHOOK_ID')
+    WEBHOOK_TOKEN=os.getenv('DISCORD_WEBHOOK_TOKEN')
+    WEBHOOK_URL=f"https://discordapp.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}"
+    data={ "content": msg }
+    response=requests.post(WEBHOOK_URL, json=data)
+    if response.status_code == 204:
+        print("메시지가 성공적으로 전송되었습니다.")
+    else:
+        print(f"에러 발생: {response.status_code}, {response.text}")   
+    
+def print_kwargs(dag, task, data_interval_start, **kwargs):
+    ds = data_interval_start.in_tz('Asia/Seoul').format('YYYYMMDDHH')
+    msg = f"{dag.dag_id} {task.task_id} {ds} OK / HEEJIN"
+    from myairflow.notify import send_noti
+    send_noti(msg)
+    
+    
 # Directed Acyclic Graph
 with DAG(
     "seoul",
-    #schedule=timedelta(days=1),
-    #schedule="0 * * * *",
     schedule="@hourly",
-    start_date=pendulum.datetime(2025, 3, 10, tz="Asia/Seoul"),
+    # start_date=datetime(2025, 3, 10)
+    start_date=pendulum.datetime(2025, 3, 11, tz="Asia/Seoul")
 ) as dag:
     
     start = EmptyOperator(task_id="start")
     end = EmptyOperator(task_id="end")
+    #send_notification = EmptyOperator(task_id="send_notification")
+    send_notification = PythonOperator(
+        task_id = "send_notification",
+        python_callable=print_kwargs
+        )
     
-    b1 = BashOperator(task_id="b_1",
-                      bash_command="""
-                      echo "date =================================> 'date'"
-                      echo "data_interval_start ==================> {{data_interval_start}}"
-                      echo "data_interval_end ====================> {{data_interval_end}}"
-                      echo "logical_date =========================> {{logical_date}}"
-                      echo "ds_nodash=============================> {{logical_date | ds_nodash}}"
-                      echo "ts  ===================================> {{logical_date | ts}}"
-                      echo "ts_nodash_with_tz=====================> {{ts_nodash_with_tz}}"
-                      echo "ts_nodash=============================> {{logical_date | ts_nodash}}"
-                      echo "prev_data_interval_start_success =====> {{prev_data_interval_start_success}}"
-                      echo "prev_data_interval_end_success =====> {{prev_data_interval_end_success}}"
-                      echo "prev_start_date_success =====> {{prev_start_date_success}}"
-                      echo "prev_end_date_success =====> {{prev_end_date_success}}"
-                      echo "inlet_events =====> {{inlet_events}}"
-                      echo "outlets ===================> {{outlets}}"
-                      echo "execution_date===================> {{execution_date}}"
-                      echo "next_execution_date===================> {{next_execution_date}}"
-                      echo "next_ds===================> {{next_ds}}"
-                      echo "next_ds_nodash ===================> {{next_ds_nodash}}"
-                      echo "prev_execution_date===================> {{prev_execution_date}}"
-                      echo "prev_ds===================> {{prev_ds}}"
-                      echo "prev_ds_nodash  ===================> {{prev_ds_nodash}}"
-                      echo "yesterday_ds===================> {{yesterday_ds}}"
-                      echo "yesterday_ds_nodash===================> {{yesterday_ds_nodash}}"
-                      echo "tomorrow_ds===================> {{tomorrow_ds}}"
-                      echo "tomorrow_ds_nodash===================> {{tomorrow_ds_nodash}}"
-                      echo "prev_execution_date_success===================> {{prev_execution_date_success}}"
-                      echo "conf===================> {{conf}}"
-                      """)
-    b2_1 = BashOperator(task_id="b_2_1", bash_command="echo 2_1")
-    b2_2 = BashOperator(task_id="b_2_2", bash_command="echo 2_2")
+    columns_b1 = [
+    "data_interval_start", "data_interval_end", "logical_date", "ds", "ds_nodash",
+    # "exception",
+    "ts", "ts_nodash_with_tz", "ts_nodash", "prev_data_interval_start_success",
+    "prev_data_interval_end_success", "prev_start_date_success", "prev_end_date_success",
+    "inlets", "inlet_events", "outlets", "outlet_events", "dag", "task", "macros",
+    "task_instance", "ti", "params", "var.value", "var.json", "conn", "task_instance_key_str",
+    "run_id", "dag_run", "map_index_template", "expanded_ti_count", "triggering_dataset_events"
+    ]
+    cmds_b1 = generate_bash_commands(columns_b1)
+   
+    b1 = BashOperator(
+        task_id="b_1", 
+        bash_command=f"""
+            echo "date ====================> `date`"
+            {cmds_b1}
+        """)
     
-    start >> b1 >> [b2_1, b2_2] >> end 
+    cmds_b2_1 = [
+    "execution_date",
+    "next_execution_date","next_ds","next_ds_nodash",
+    "prev_execution_date","prev_ds","prev_ds_nodash",
+    "yesterday_ds","yesterday_ds_nodash",
+    "tomorrow_ds", "tomorrow_ds_nodash",
+    "prev_execution_date_success",
+    "conf"
+    ]
+    
+    cmds_b2_1 = generate_bash_commands(cmds_b2_1)
+   
+    b2_1 = BashOperator(task_id="b_2_1", 
+                        bash_command=f"""
+                        {cmds_b2_1}
+                        """)
+    
+    b2_2 = BashOperator(task_id="b_2_2", 
+                        bash_command="""
+                        echo "data_interval_start : {{ data_interval_start.in_tz('Asia/Seoul') }}"
+                        """)
+    
+    mkdir = BashOperator(task_id = "mkdir",
+                         bash_command="""
+                         echo "data_interval_start : {{data_interval_start.in_tz('Asia/Seoul')}}"                     
+                         mkdir -p ~/data/seoul/{{data_interval_start.in_tz('Asia/Seoul').year}}/{{data_interval_start.in_tz('Asia/Seoul').month}}/{{data_interval_start.in_tz('Asia/Seoul').day}}/{{data_interval_start.in_tz('Asia/Seoul').hour}}
+                         """)
+                        
+    start >> b1 >> [b2_1, b2_2] >> mkdir >> [end, send_notification]
+
+if __name__ == "__main__":
+    dag.test()
