@@ -30,7 +30,7 @@ with DAG(
             task_id = "t_vpython",
             python_callable=f_vpython,
             requirements=[
-                "git+https://github.com/heejin131/myairflow.git@0.1.0"
+                "git+https://github.com/heejin131/myairflow.git"
             ]
         )
 
