@@ -30,7 +30,7 @@ def send_noti(msg):
 def print_kwargs(dag, task, data_interval_start, **kwargs):
     ds = data_interval_start.in_tz('Asia/Seoul').format('YYYYMMDDHH')
     msg = f"{dag.dag_id} {task.task_id} {ds} OK / HEEJIN"
-    from myairflow.notify import send_noti
+    from myairflow.send_notify import send_noti
     send_noti(msg)
     
     
