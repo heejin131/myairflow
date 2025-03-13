@@ -1,11 +1,11 @@
 [project]
 name = "myairflow"
-version = "0.1.0"
+version = "0.1.1"
 description = "Default template for PDM package"
 authors = [
     {name = "heejin131", email = "journeyjean131@gmail.com"},
 ]
-dependencies = ["requests>=2.32.3"]
+dependencies = ["requests>=2.32.3", "pandas>=2.2.3", "pyarrow>=19.0.1"]
 requires-python = ">=3.10"
 readme = "README.md"
 license = {text = "MIT"}
