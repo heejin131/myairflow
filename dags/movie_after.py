@@ -23,8 +23,8 @@ with DAG(
     catchup=True,
     tags=['api', 'movie'],
 ) as dag:
-    REQUIREMENTS = ["git+https://github.com/heejin131/movie.git@0.3.0"]
-    BASE_DIR = f"~/data/{DAG_ID}"
+    REQUIREMENTS = ["git+https://github.com/heejin131/movie.git@0.4.0"]
+    BASE_DIR = f"/home/gmlwls5168/data/{DAG_ID}"
 
     start = EmptyOperator(task_id='start')
     end = EmptyOperator(task_id = 'end')
@@ -40,13 +40,21 @@ with DAG(
     )
 
     #경로에 파일을 저장하는 작업
-    def fn_gen_meta(**kwargs):
+    def fn_gen_meta(ds_nodash, **kwargs):
         import json
         import pandas as pd
         from movie.api.call import fillna_meta
+        
         print(json.dumps(kwargs, indent=4, ensure_ascii=False))
-        meta_df = fillna_meta(previous_df, current_df)
+        
+        try:
+            previous_df = pd.read_parquet('/home/gmlwls5168/data/movie_after/meta/meta.parquet')
+        except FileNotFoundError:
+            previous_df = pd.DataFrame()      
         current_df = pd.read_parquet('/home/gmlwls5168/data/movies/dailyboxoffice/dt={ds_nodash}')
+        
+        meta_df = fillna_meta(previous_df, current_df)
+        
         save_path = "/home/gmlwls5168/data/movie_after/meta/meta.parquet"
         meta_df.to_parquet(save_path)
         print(meta_df)
@@ -55,7 +63,8 @@ with DAG(
         task_id='gen.meta',
         python_callable=fn_gen_meta,
         system_site_packages=False,
-        requirements=REQUIREMENTS
+        requirements=REQUIREMENTS,
+        op_kwargs={"ds_nodash": "{{ ds_nodash }}"}
     )
 
     def fn_gen_movie(base_path, ds_nodash, **kwargs):
@@ -64,15 +73,19 @@ with DAG(
         print(json.dumps(kwargs, indent=4, ensure_ascii=False))
         print(f"base_path: {base_path}")
         
+        try:
+            previous_df = pd.read_parquet(f"{base_path}/meta/meta.parquet")
+        except FileNotFoundError:
+            previous_df = pd.DataFrame()
+        
         # TODO -> f"{base_path}/dailyboxoffice/ 생성
-        meta_df = fillna_meta(previous_df, current_df)
-        save_path = "/home/gmlwls5168/data/movie_after/dailyoffice/dt={ds_nodash}"
-        previous_df = pd.read_parquet("/home/gmlwls5168/data/movie_after/meta/meta.parquet")
+      
         current_df = pd.read_parquet('/home/gmlwls5168/data/movies/dailyboxoffice/dt={ds_nodash}')
+        meta_df = fillna_meta(previous_df, current_df)
+        
+        meta_save_path = f"{base_path}/dailyboxoffice/"
         meta_df.to_parquet(meta_save_path, partition_cols=['dt', 'multiMovieYn', 'repNationCd'])
-        meta_df.to_parquet(save_path)
-        print("fin")
-
+        print("merge fin")
 
 
     gen_movie = PythonVirtualenvOperator(
